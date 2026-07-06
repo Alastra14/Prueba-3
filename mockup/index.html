@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mesa de Ayuda Inteligente Ternova</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand">
+          <img src="./assets/logos/logo-ternova-negativo.png" alt="Ternova" />
+        </div>
+        <nav class="nav-list">
+          <button class="nav-item active" type="button" title="Cola">
+            <i data-lucide="messages-square"></i>
+            <span>Cola</span>
+          </button>
+          <button class="nav-item" type="button" title="Agentes">
+            <i data-lucide="users-round"></i>
+            <span>Agentes</span>
+          </button>
+          <button class="nav-item" type="button" title="GLPI">
+            <i data-lucide="ticket-check"></i>
+            <span>GLPI</span>
+          </button>
+          <button class="nav-item" type="button" title="Analitica">
+            <i data-lucide="chart-no-axes-combined"></i>
+            <span>Metricas</span>
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span>DGX Spark activo</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Mesa de ayuda TI</p>
+            <h1>Pool N1 hibrido</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-button" id="simulateBtn" type="button" title="Simular solicitud">
+              <i data-lucide="plus"></i>
+              <span>Solicitud</span>
+            </button>
+            <button class="icon-button secondary" id="advisorBtn" type="button" title="Pedir asesor DGX">
+              <i data-lucide="sparkles"></i>
+              <span>Asesor DGX</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="lab-panel" aria-label="Configuracion del agente IA">
+          <div class="lab-card connection-card">
+            <div>
+              <p class="eyebrow">Conector IA</p>
+              <h2>Endpoint del agente</h2>
+            </div>
+            <div class="form-grid">
+              <label>
+                <span>API URL</span>
+                <input id="apiUrlInput" type="url" placeholder="http://127.0.0.1:8000/api/agent" autocomplete="off" />
+              </label>
+              <label>
+                <span>API key</span>
+                <input id="apiKeyInput" type="password" placeholder="Solo sesion local" autocomplete="off" />
+              </label>
+              <label>
+                <span>Formato</span>
+                <select id="apiFormatSelect">
+                  <option value="auto">Auto</option>
+                  <option value="generic">Generico</option>
+                  <option value="openai">OpenAI compatible</option>
+                  <option value="ollama">Ollama chat</option>
+                </select>
+              </label>
+              <label>
+                <span>Auth</span>
+                <select id="authHeaderSelect">
+                  <option value="bearer">Bearer</option>
+                  <option value="x-api-key">x-api-key</option>
+                  <option value="api-key">api-key</option>
+                  <option value="none">Sin auth</option>
+                </select>
+              </label>
+              <label>
+                <span>Modelo</span>
+                <input id="modelInput" type="text" placeholder="opcional" autocomplete="off" />
+              </label>
+              <label>
+                <span>Agente</span>
+                <select id="agentSelect">
+                  <option value="nova">Nova</option>
+                  <option value="atlas">Atlas</option>
+                  <option value="cora">Cora</option>
+                </select>
+              </label>
+            </div>
+            <div class="lab-actions">
+              <button class="mini-action primary" id="saveConfigBtn" type="button">
+                <i data-lucide="plug-zap"></i>
+                <span>Usar endpoint</span>
+              </button>
+              <button class="mini-action" id="testAgentBtn" type="button">
+                <i data-lucide="radio-tower"></i>
+                <span>Probar IA</span>
+              </button>
+              <span class="connection-status" id="connectionStatus">Modo simulado</span>
+            </div>
+          </div>
+
+          <div class="lab-card case-card">
+            <div>
+              <p class="eyebrow">Casos especificos</p>
+              <h2>Biblioteca de pruebas</h2>
+            </div>
+            <label>
+              <span>Caso</span>
+              <select id="caseSelect"></select>
+            </label>
+            <div class="case-preview" id="casePreview"></div>
+            <button class="mini-action primary full" id="loadCaseBtn" type="button">
+              <i data-lucide="file-plus-2"></i>
+              <span>Cargar caso</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="metrics-strip" aria-label="Indicadores">
+          <article class="metric">
+            <span>En cola</span>
+            <strong id="metricQueue">7</strong>
+          </article>
+          <article class="metric">
+            <span>Primera respuesta</span>
+            <strong>42s</strong>
+          </article>
+          <article class="metric">
+            <span>FCR piloto</span>
+            <strong>48%</strong>
+          </article>
+          <article class="metric">
+            <span>Sync GLPI</span>
+            <strong>99%</strong>
+          </article>
+        </section>
+
+        <section class="operations-grid">
+          <section class="queue-panel" aria-label="Cola de solicitudes">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Entrada</p>
+                <h2>Solicitudes</h2>
+              </div>
+              <div class="segmented" role="group" aria-label="Filtro de cola">
+                <button class="selected" type="button">Todas</button>
+                <button type="button">Riesgo</button>
+                <button type="button">SLA</button>
+              </div>
+            </div>
+            <div class="queue-list" id="queueList"></div>
+          </section>
+
+          <section class="conversation-panel" aria-label="Conversacion">
+            <div class="conversation-head">
+              <div>
+                <p class="eyebrow" id="conversationEyebrow">Teams</p>
+                <h2 id="conversationTitle">Solicitud</h2>
+              </div>
+              <div class="agent-chip" id="agentChip">
+                <i data-lucide="bot"></i>
+                <span>Nova</span>
+              </div>
+            </div>
+
+            <div class="handoff-banner" id="handoffBanner">
+              <i data-lucide="route"></i>
+              <span>El usuario conserva el mismo hilo aunque cambie el operador.</span>
+            </div>
+
+            <div class="messages" id="messages"></div>
+
+            <div class="composer">
+              <button class="tool-button" id="takeBtn" type="button" title="Tomar conversacion">
+                <i data-lucide="hand"></i>
+              </button>
+              <input id="replyInput" type="text" value="Recibido. Voy a validar el caso y te actualizo en este mismo chat." aria-label="Respuesta" />
+              <button class="send-button" id="sendBtn" type="button" title="Enviar respuesta">
+                <i data-lucide="send"></i>
+                <span>Enviar</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="context-panel" aria-label="Contexto y GLPI">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">Expediente</p>
+                <h2>GLPI y routing</h2>
+              </div>
+              <span class="ticket-pill" id="ticketPill">GLPI pendiente</span>
+            </div>
+
+            <div class="detail-block">
+              <span class="label">Clasificacion</span>
+              <strong id="classificationText">Telefonia movil</strong>
+              <p id="classificationMeta">Impacto medio, urgencia media</p>
+            </div>
+
+            <div class="detail-block">
+              <span class="label">Recomendacion DGX</span>
+              <p id="advisorText">Recolectar modelo, IMEI, usuario asignado y validar si el activo existe en GLPI antes de reasignar.</p>
+            </div>
+
+            <div class="action-stack">
+              <button class="wide-action" id="createTicketBtn" type="button">
+                <i data-lucide="ticket-plus"></i>
+                <span>Crear ticket GLPI</span>
+              </button>
+              <button class="wide-action muted" id="reassignBtn" type="button">
+                <i data-lucide="user-round-cog"></i>
+                <span>Reasignar especialista</span>
+              </button>
+              <button class="wide-action muted" id="syncBtn" type="button">
+                <i data-lucide="refresh-cw"></i>
+                <span>Sincronizar GLPI</span>
+              </button>
+            </div>
+
+            <div class="agent-roster">
+              <div class="panel-heading compact">
+                <div>
+                  <p class="eyebrow">Pool N1</p>
+                  <h2>Agentes</h2>
+                </div>
+              </div>
+              <div id="agentRoster"></div>
+            </div>
+
+            <div class="timeline">
+              <div class="panel-heading compact">
+                <div>
+                  <p class="eyebrow">Auditoria</p>
+                  <h2>Eventos</h2>
+                </div>
+              </div>
+              <ol id="timeline"></ol>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="./master-prompts.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
