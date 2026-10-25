@@ -135,7 +135,8 @@ let activeId = conversations[0].id;
 let requestIndex = 3;
 let agentRotation = 0;
 let aiConfig = {
-  apiUrl: "",
+  // Defaults del gateway DGX Spark (modelo estable Nova); editable en la UI.
+  apiUrl: "https://dgx-spark.tail3e164e.ts.net/v1/chat/completions",
   apiKey: "",
   apiFormat: "auto",
   authHeader: "bearer",
@@ -210,7 +211,7 @@ function setConnectionStatus(text, state = "") {
 function loadSavedConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(configStorageKey) || "{}");
-    aiConfig = { ...aiConfig, ...saved, apiKey: "" };
+    aiConfig = { ...aiConfig, ...saved };
   } catch {
     localStorage.removeItem(configStorageKey);
   }
@@ -225,7 +226,7 @@ function loadSavedConfig() {
 
 function saveConfigFromForm() {
   aiConfig = {
-    apiUrl: apiUrlInput.value.trim(),
+    apiUrl: normalizeApiUrl(apiUrlInput.value),
     apiKey: apiKeyInput.value.trim(),
     apiFormat: apiFormatSelect.value,
     authHeader: authHeaderSelect.value,
@@ -234,12 +235,19 @@ function saveConfigFromForm() {
   };
   localStorage.setItem(configStorageKey, JSON.stringify({
     apiUrl: aiConfig.apiUrl,
+    apiKey: aiConfig.apiKey,
     apiFormat: aiConfig.apiFormat,
     authHeader: aiConfig.authHeader,
     model: aiConfig.model,
     agentId: aiConfig.agentId
   }));
   setConnectionStatus(aiConfig.apiUrl ? "Endpoint configurado" : "Modo simulado", aiConfig.apiUrl ? "ok" : "");
+}
+
+function normalizeApiUrl(url) {
+  const u = (url || "").trim().replace(/\/+$/, "");
+  if (/\/v1$/i.test(u)) return u + "/chat/completions";
+  return u;
 }
 
 function resolveApiFormat(apiUrl, selected) {
@@ -297,7 +305,7 @@ function buildAgentBody(action, conversation, operatorInput = "") {
 
   if (format === "openai") {
     return {
-      model: aiConfig.model || "gpt-4.1-mini",
+      model: aiConfig.model || "Nova",
       temperature: 0.2,
       messages: [
         { role: "system", content: masterPrompt },
@@ -578,14 +586,24 @@ async function runAgentAction(action, operatorInput = "") {
   }
 }
 
-document.getElementById("sendBtn").addEventListener("click", () => {
+document.getElementById("sendBtn").addEventListener("click", async () => {
   const conversation = getActiveConversation();
-  const agent = getAgent(conversation.agentId);
   const value = replyInput.value.trim();
   if (!value) return;
-  conversation.messages.push({ author: agent.name, type: "agent", text: value });
-  conversation.timeline.push(`Respuesta enviada por ${agent.name}`);
-  render();
+  replyInput.value = "";
+  if (aiConfig.apiUrl && aiConfig.apiKey) {
+    // Modo IA: lo escrito entra como mensaje del usuario y el agente (Nova) responde.
+    conversation.messages.push({ author: conversation.requester || "Usuario", type: "user", text: value });
+    conversation.timeline.push("Mensaje del usuario registrado");
+    render();
+    await runAgentAction("responder", value);
+  } else {
+    // Modo manual (sin IA configurada): lo escrito es la respuesta del agente.
+    const agent = getAgent(conversation.agentId);
+    conversation.messages.push({ author: agent.name, type: "agent", text: value });
+    conversation.timeline.push(`Respuesta enviada por ${agent.name}`);
+    render();
+  }
 });
 
 document.getElementById("takeBtn").addEventListener("click", () => {
@@ -645,6 +663,100 @@ document.getElementById("simulateBtn").addEventListener("click", () => {
   agentRotation += 1;
   render();
 });
+
+
+// ===================== Simulación IA vs IA =====================
+// Una IA hace de USUARIO (con el problema del caso activo) y el flujo normal
+// del agente (Nova + master prompt) responde. 4 segundos entre turnos.
+let simRunning = false;
+const SIM_DELAY_MS = 4000;
+const SIM_MAX_TURNS = 6;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function buildUserSimMessages(conversation) {
+  const caseTemplate = getCase(conversation.caseKey) || {};
+  const system = `Eres ${conversation.requester || "un empleado"} de Grupo Ternova escribiendo a la Mesa de Ayuda TI por Teams.
+Tu problema real: ${caseTemplate.summary || conversation.summary || conversation.title}.
+Reglas: escribe como usuario normal (espanol, breve, informal, 1-3 lineas), da los datos solo cuando te los pidan, una cosa a la vez.
+NUNCA reveles que eres una IA. No uses markdown ni JSON: solo el texto del mensaje.
+Si el agente ya resolvio tu problema o te dio pasos claros que puedes seguir, agradece y termina tu mensaje con la palabra RESUELTO.`;
+  const history = conversation.messages
+    .filter((m) => m.type === "user" || m.type === "agent")
+    .slice(-10)
+    .map((m) => ({
+      role: m.type === "user" ? "assistant" : "user", // perspectiva invertida: la IA-usuario "es" el usuario
+      content: m.text,
+    }));
+  // vLLM exige al menos un mensaje role:user y conviene cerrar con user.
+  if (!history.length || history[history.length - 1].role !== "user") {
+    history.push({ role: "user", content: "(Continua: escribe tu siguiente mensaje a la Mesa de Ayuda. Solo el texto del mensaje.)" });
+  }
+  return [{ role: "system", content: system }, ...history];
+}
+
+async function callUserSim(conversation) {
+  const response = await fetch("/api/agent", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      apiUrl: aiConfig.apiUrl,
+      apiKey: aiConfig.apiKey,
+      authHeader: aiConfig.authHeader,
+      body: {
+        model: aiConfig.model || "Nova",
+        temperature: 0.8,
+        max_tokens: 180,
+        messages: buildUserSimMessages(conversation),
+      },
+    }),
+  });
+  const proxied = await response.json();
+  if (!response.ok || !proxied.ok) throw new Error(proxied.error || `estado ${proxied.status}`);
+  const text = extractAgentText(proxied.data ?? proxied.text) || "";
+  return text.trim();
+}
+
+async function runAiVsAi() {
+  const btn = document.getElementById("aivsaiBtn");
+  if (simRunning) { simRunning = false; btn.querySelector("span").textContent = "IA vs IA (simular usuario)"; return; }
+  if (!aiConfig.apiUrl || !aiConfig.apiKey) {
+    setConnectionStatus("Configura endpoint y API key para IA vs IA", "error");
+    return;
+  }
+  simRunning = true;
+  btn.querySelector("span").textContent = "Detener simulacion";
+  const conversation = getActiveConversation();
+  addSystemEvent(conversation, "Simulacion IA vs IA iniciada (usuario sintetico + agente Nova).");
+  render();
+  try {
+    for (let turn = 0; turn < SIM_MAX_TURNS && simRunning; turn++) {
+      // 1) la IA-usuario escribe (o abre con el mensaje inicial si es el primer turno)
+      setConnectionStatus("IA usuario escribiendo...", "");
+      const userMsg = await callUserSim(conversation);
+      if (!simRunning) break;
+      conversation.messages.push({ author: conversation.requester || "Usuario (IA)", type: "user", text: userMsg.replace(/RESUELTO\.?$/i, "").trim() || userMsg });
+      render();
+      const resolved = /RESUELTO\.?$/i.test(userMsg);
+      if (resolved) {
+        addSystemEvent(conversation, "Simulacion terminada: el usuario dio el caso por RESUELTO.");
+        break;
+      }
+      await sleep(SIM_DELAY_MS);
+      if (!simRunning) break;
+      // 2) el agente (Nova + master prompt) responde por el flujo normal
+      await runAgentAction("responder", userMsg);
+      await sleep(SIM_DELAY_MS);
+    }
+  } catch (error) {
+    addSystemEvent(getActiveConversation(), `Simulacion detenida: ${error.message}`);
+  } finally {
+    simRunning = false;
+    btn.querySelector("span").textContent = "IA vs IA (simular usuario)";
+    render();
+  }
+}
+
+document.getElementById("aivsaiBtn").addEventListener("click", () => { runAiVsAi(); });
 
 document.getElementById("loadCaseBtn").addEventListener("click", () => {
   const template = getCase(caseSelect.value);
